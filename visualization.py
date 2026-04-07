@@ -43,7 +43,7 @@ COLORS = {
     "current"  : "#E26D5C",   # terracotta
     "start"    : "#723046",   # deep plum
     "goal"     : "#c0392b",   # strong red
-    "path"     : "#f0a500",   # golden orange — clearly distinct from frontier
+    "path"     : "#c07c2a",   # golden orange — clearly distinct from frontier
     "grid_line": "#e0d9d0",
 }
 
@@ -142,6 +142,29 @@ class Visualizer:
         interior.bind("<Configure>",
                       lambda e: canvas.configure(
                           scrollregion=canvas.bbox("all")))
+
+        def _on_mousewheel(event):
+            if event.num == 4:
+                canvas.yview_scroll(-1, "units")
+            elif event.num == 5:
+                canvas.yview_scroll(1, "units")
+            else:
+                canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        def _bind_children(widget):
+            widget.bind("<MouseWheel>", _on_mousewheel)
+            widget.bind("<Button-4>",   _on_mousewheel)
+            widget.bind("<Button-5>",   _on_mousewheel)
+            for child in widget.winfo_children():
+                _bind_children(child)
+
+        canvas.bind("<MouseWheel>",   _on_mousewheel)
+        canvas.bind("<Button-4>",     _on_mousewheel)
+        canvas.bind("<Button-5>",     _on_mousewheel)
+        interior.bind("<MouseWheel>", _on_mousewheel)
+        interior.bind("<Button-4>",   _on_mousewheel)
+        interior.bind("<Button-5>",   _on_mousewheel)
+        interior.bind("<Map>", lambda e: _bind_children(interior))
 
         self._build_controls(interior)
 
@@ -323,6 +346,7 @@ class Visualizer:
         self.pause_btn = self._action_btn(p, "⏸  Pause", self._on_pause,
                                           WM_PLUM, "white")
         self._action_btn(p, "↺  Reset", self._on_reset, WM_SAGE, WM_DARK)
+        self._action_btn(p, "✕  Close", self._on_close, "#6b2d2d", "white")
 
         # Status label
         self.status_var = tk.StringVar(value="Ready")
@@ -455,6 +479,7 @@ class Visualizer:
 
         self._paused = False
         self._step_event.set()
+        self.pause_btn.configure(text="⏸  Pause")
 
         # Build environment
         mode = self.mode_var.get()
@@ -551,10 +576,14 @@ class Visualizer:
             self._step_event.set()
             self._set_status("Running…")
 
+    def _on_close(self):
+        self._running = False
+        self.root.destroy()
+
     def _on_reset(self):
         self._running = False
         self._paused  = False
-        self.pause_btn.configure(text="Pause")
+        self.pause_btn.configure(text="⏸  Pause")
         self._blank_canvas()
         self._set_status("Ready")
 
@@ -657,7 +686,20 @@ class Visualizer:
         ax.set_xlim(0, env.cols)
         ax.set_ylim(0, env.rows)
         ax.set_aspect("equal")
-        ax.tick_params(colors=WM_MUTED, labelsize=7)
+
+        # col labels (0-based) along bottom
+        ax.set_xticks([c + 0.5 for c in range(env.cols)])
+        ax.set_xticklabels([str(c) for c in range(env.cols)], fontsize=6, color=WM_MUTED)
+        ax.xaxis.set_ticks_position("bottom")
+        ax.set_xlabel("col", fontsize=6, color=WM_MUTED, labelpad=2)
+
+        # row labels (0-based), top = row 0
+        ax.set_yticks([env.rows - r - 0.5 for r in range(env.rows)])
+        ax.set_yticklabels([str(r) for r in range(env.rows)], fontsize=6, color=WM_MUTED)
+        ax.yaxis.set_ticks_position("left")
+        ax.set_ylabel("row", fontsize=6, color=WM_MUTED, labelpad=2)
+
+        ax.tick_params(length=0, pad=3)
 
         title = f"Grid  ·  {state.get('algo','?').upper()}  ·  {self.heuristic_var.get()}"
         if path:
@@ -867,6 +909,12 @@ class Visualizer:
         frontier_list = state["frontier"]
         f_vals_q      = state.get("f", {})
         algo          = state.get("algo", "")
+        is_grid       = self._graph_type == "grid"
+
+        def fmt_node(node):
+            if is_grid and isinstance(node, tuple) and len(node) == 2:
+                return f"({node[0]}, {node[1]})"
+            return str(node)[:13]
 
         lines = [f"QUEUE  (size: {len(frontier_list)})"]
         lines.append("─" * 22)
@@ -883,7 +931,7 @@ class Visualizer:
             else:
                 display = [(0, n) for n in frontier_list]
             for fv, node in display:
-                ns = f"{node}" if isinstance(node, tuple) else str(node)[:13]
+                ns = fmt_node(node)
                 fstr = f"  f={fv:.1f}" if f_vals_q else ""
                 lines.append(f"{ns}{fstr}")
         else:
