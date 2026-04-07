@@ -64,13 +64,18 @@ def haversine(node_a, node_b, coords):
 # WRAPPER 
 def get_heuristic(name, coords=None):
     """
-    Returns a heuristic function based on string name
+    Returns a heuristic function based on string name.
+    If coords is provided, city-graph-aware versions are used automatically.
     """
 
     if name == "manhattan":
         return manhattan
 
     elif name == "euclidean":
+        # City graph: nodes are strings, so look up coords
+        if coords is not None:
+            return lambda a, b: euclidean_coords(a, b, coords)
+        # Grid: nodes are (row, col) tuples, use direct math
         return euclidean
 
     elif name == "chebyshev":
