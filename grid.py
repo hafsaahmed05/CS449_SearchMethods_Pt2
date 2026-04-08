@@ -10,6 +10,8 @@ Let's start with grid.py. What functions should I have in the grid class to crea
 grid environment?
 
 The functions used in this class were given by ChatGPT and written in assistance with Claude. 
+
+Code reused from Part 1.
 '''
 
 EMPTY    = 0

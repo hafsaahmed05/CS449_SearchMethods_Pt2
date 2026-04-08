@@ -2,6 +2,13 @@
 launcher.py  — Two-page Tkinter launcher for AI Search Visualizer
 Page 1: Graph mode + environment settings
 Page 2: Algorithm, heuristic, start/goal, speed → Launch
+
+# Claude Prompt:
+# Build a two-page Tkinter launcher for an AI search visualizer. Page 1 should let
+# the user select graph mode (grid or city) and configure grid settings (rows, cols,
+# obstacle density, connectivity). Page 2 should let the user pick an algorithm,
+# heuristic, start/goal cities, and animation speed. Use a dark color palette and
+# return the selected config as a dict when the user clicks Launch.
 """
 
 import tkinter as tk

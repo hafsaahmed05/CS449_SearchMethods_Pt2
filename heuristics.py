@@ -1,6 +1,10 @@
 import math
 
 # GRID-BASED HEURISTICS
+# Source: 
+# https://theory.stanford.edu/~amitp/GameProgramming/Heuristics.html
+# https://stackoverflow.com/questions/4913349/haversine-formula-in-python-bearing-and-distance-between-two-gps-points
+
 
 def manhattan(a, b):
     """

@@ -1,3 +1,13 @@
+"""
+benchmark.py — Algorithm profiler and batch comparison tool
+
+Claude Prompt:
+Build a benchmarking harness with two modes: a single-run mode that runs one
+algorithm on one environment and logs metrics, and a batch compare mode that
+runs all algorithms across multiple random seeds (at least 5) and outputs a
+comparison table with mean ± std for time, memory, and nodes expanded.
+"""
+
 import time
 import tracemalloc
 import random
@@ -6,8 +16,7 @@ import statistics
 from search import bfs, dfs, iddfs, greedy_best_first, astar, reconstruct_path
 from heuristics import get_heuristic
 
-
-# ── Algorithm wrapper (IMPORTANT FIX) ────────────────────────────────────────
+# ── Algorithm wrapper ────────────────────────────────────────
 
 ALGORITHMS = {
     "bfs": lambda env, h_fn=None: bfs(env.start, env.goal, env.adjacency),

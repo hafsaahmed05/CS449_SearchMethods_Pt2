@@ -1,10 +1,12 @@
 """
 visualization.py  — Unified single-window AI Search Visualizer
-Left panel : all controls (mode, algo, heuristic, nodes, grid settings, speed)
-Right panel: matplotlib canvas (graph + search tree + metrics)
-User can change any setting and click Run without restarting the program.
 
-Warm palette inspired by: #C9CBA3 · #FFE1A8 · #E26D5C · #723046 · #472D30
+Written in assistance with Claude with the UI design and requirements by me:
+This file contains the Visualizer class, which builds a Tkinter GUI with a left control 
+panel and a right matplotlib canvas. The left panel has options to select graph mode 
+(grid or city), algorithm, heuristic, start/goal, and animation speed. 
+The right canvas visualizes the search process with a main view for the graph/grid, 
+a search tree view, and a metrics panel.
 """
 
 import tkinter as tk

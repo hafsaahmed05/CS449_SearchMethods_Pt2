@@ -1,3 +1,5 @@
+# graph_loader.py — Weighted graph builder and city data parser
+
 import csv
 import math
 

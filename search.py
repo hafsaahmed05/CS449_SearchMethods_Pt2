@@ -1,8 +1,16 @@
 ﻿from collections import deque
 import heapq
 
-# ── Path reconstruction ───────────────────────────────────────────────────────
+# Search algorithm implementations referenced from GeeksforGeeks (geeksforgeeks.org)
+# and adapted to use Python generators for step-by-step visualization.
 
+# BFS: https://www.geeksforgeeks.org/breadth-first-search-or-bfs-for-a-graph/
+# DFS: https://www.geeksforgeeks.org/depth-first-search-or-dfs-for-a-graph/
+# IDDFS: https://www.geeksforgeeks.org/iterative-deepening-searchids-iterative-deepening-depth-first-searchiddfs/
+# Greedy Best-First: https://www.geeksforgeeks.org/greedy-best-first-search-algorithm/
+# A*: https://www.geeksforgeeks.org/a-search-algorithm/
+
+# ── Path reconstruction ───────────────────────────────────────────────────────
 def reconstruct_path(parent, start, goal):
     path    = []
     current = goal
@@ -14,7 +22,6 @@ def reconstruct_path(parent, start, goal):
 
 
 # ── BFS ───────────────────────────────────────────────────────────────────────
-
 def bfs(start, goal, graph):
     frontier = deque([start])
     visited  = set()
@@ -49,7 +56,6 @@ def bfs(start, goal, graph):
 
 
 # ── DFS ───────────────────────────────────────────────────────────────────────
-
 def dfs(start, goal, graph):
     stack   = [start]
     visited = set()
@@ -84,7 +90,6 @@ def dfs(start, goal, graph):
 
 
 # ── IDDFS ─────────────────────────────────────────────────────────────────────
-
 def iddfs(start, goal, graph, max_depth=100):
 
     def dls(node, goal, depth, parent, visited, g_cost):
@@ -125,7 +130,6 @@ def iddfs(start, goal, graph, max_depth=100):
 
 
 # ── Greedy Best-First ─────────────────────────────────────────────────────────
-
 def greedy_best_first(start, goal, graph, heuristic):
     h_start  = heuristic(start, goal)
     open_list = []
@@ -170,7 +174,6 @@ def greedy_best_first(start, goal, graph, heuristic):
 
 
 # ── A* ────────────────────────────────────────────────────────────────────────
-
 def astar(start, goal, graph, heuristic):
     h_start   = heuristic(start, goal)
     open_list = []
@@ -226,7 +229,6 @@ def astar(start, goal, graph, heuristic):
 
 
 # ── Registry ──────────────────────────────────────────────────────────────────
-
 ALGORITHMS = {
     'bfs'   : bfs,
     'dfs'   : dfs,
