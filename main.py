@@ -3,15 +3,14 @@ main.py  — Entry point for AI Search Visualizer
 """
 
 import argparse
-from visualization import Visualizer
-from graph_loader import load_city_graph
-from grid import GridEnvironment
-
+from ui.visualization import Visualizer
+from core.graph_loader import load_city_graph
+from core.grid import GridEnvironment
 
 def get_args():
     p = argparse.ArgumentParser()
-    p.add_argument("--coord_file", default="coordinates.csv")
-    p.add_argument("--adj_file",   default="Adjacencies.txt")
+    p.add_argument("--coord_file", default="data/coordinates.csv")
+    p.add_argument("--adj_file",   default="data/Adjacencies.txt")
     return p.parse_args()
 
 

@@ -656,13 +656,13 @@ class Visualizer:
         thread.start()
 
     def _run_benchmark(self, mode):
-        from benchmark import batch_compare, plot_complexity_chart
-        from heuristics import get_heuristic
+        from benchmark.benchmark import batch_compare, plot_complexity_chart
+        from core.heuristics import get_heuristic
         import numpy as np
 
         try:
             if mode == "grid":
-                from grid import GridEnvironment
+                from core.grid import GridEnvironment
                 preset = self._bench_preset_var.get()
 
                 if preset == "all":
@@ -704,7 +704,7 @@ class Visualizer:
                                     "Start and goal must differ.")
                     return
 
-                from search import bfs, dfs, iddfs, greedy_best_first, astar, reconstruct_path
+                from core.search import bfs, dfs, iddfs, greedy_best_first, astar, reconstruct_path
                 import time, tracemalloc
 
                 algos = [
@@ -757,7 +757,7 @@ class Visualizer:
         """Draw 3-panel bar chart for grid complexity benchmark — equal 1x3 layout."""
         import numpy as np
 
-        from benchmark import ALGORITHMS as BENCH_ALGOS
+        from benchmark.benchmark import ALGORITHMS as BENCH_ALGOS
         algo_names = list(BENCH_ALGOS.keys())
         settings   = list(all_results.keys())
         n_algos    = len(algo_names)
@@ -980,9 +980,9 @@ class Visualizer:
         self._graph_type = graph_type
 
         # Get search generator
-        from search import (bfs, dfs, iddfs, greedy_best_first,
+        from core.search import (bfs, dfs, iddfs, greedy_best_first,
                             astar, reconstruct_path)
-        from heuristics import get_heuristic
+        from core.heuristics import get_heuristic
 
         hname   = self.heuristic_var.get()
         coords_ = getattr(self._env, "coords", None)
@@ -1067,7 +1067,7 @@ class Visualizer:
                 break
 
         if final_state and final_state.get("found"):
-            from search import reconstruct_path
+            from core.search import reconstruct_path
             path = reconstruct_path(
                 final_state["parent"], self._env.start, self._env.goal)
         else:

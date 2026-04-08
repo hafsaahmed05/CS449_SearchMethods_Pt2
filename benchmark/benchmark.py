@@ -3,9 +3,9 @@ import tracemalloc
 import random
 import statistics
 
-from search import bfs, dfs, iddfs, greedy_best_first, astar, reconstruct_path
-from heuristics import get_heuristic
-
+from core.search import bfs, dfs, iddfs, greedy_best_first, astar, reconstruct_path
+from core.heuristics import get_heuristic
+from core.grid import GridEnvironment
 
 # ── Algorithm wrapper (IMPORTANT FIX) ────────────────────────────────────────
 
@@ -224,7 +224,7 @@ def run_complexity_suite():
     Runs batch_compare across 3 complexity settings and produces a chart.
     Call via: python main.py --benchmark
     """
-    from grid import GridEnvironment
+    from core.grid import GridEnvironment
 
     settings = [
         {"label": "easy",   "rows": 8,  "cols": 8,  "obs": 0.20, "conn": 4},
