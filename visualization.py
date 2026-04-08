@@ -1,12 +1,10 @@
 """
 visualization.py  — Unified single-window AI Search Visualizer
+Left panel : all controls (mode, algo, heuristic, nodes, grid settings, speed)
+Right panel: matplotlib canvas (graph + search tree + metrics)
+User can change any setting and click Run without restarting the program.
 
-Written in assistance with Claude with the UI design and requirements by me:
-This file contains the Visualizer class, which builds a Tkinter GUI with a left control 
-panel and a right matplotlib canvas. The left panel has options to select graph mode 
-(grid or city), algorithm, heuristic, start/goal, and animation speed. 
-The right canvas visualizes the search process with a main view for the graph/grid, 
-a search tree view, and a metrics panel.
+Warm palette inspired by: #C9CBA3 · #FFE1A8 · #E26D5C · #723046 · #472D30
 """
 
 import tkinter as tk
@@ -98,6 +96,7 @@ class Visualizer:
         self._env           = None
         self._city_pos      = None
         self._graph_obj     = None
+        self._bench_needs_restore = False
 
         # ── Root window ───────────────────────────────────────────────────
         self.root = tk.Tk()
@@ -317,6 +316,22 @@ class Visualizer:
             self._conn_btns[val] = b
         self._set_conn(4, init=True)
 
+        # Quick presets — inside grid_section so they appear after heuristic
+        self._section(self.grid_section, "Quick Preset")
+        self._quick_preset_frame = tk.Frame(self.grid_section, bg=WM_PANEL)
+        self._quick_preset_frame.pack(fill=tk.X, padx=16, pady=(4, 10))
+        for label, rows, cols, obs in [
+            ("Easy",   8,  8,  0.20),
+            ("Medium", 15, 15, 0.25),
+            ("Hard",   25, 25, 0.30),
+        ]:
+            b = tk.Button(self._quick_preset_frame, text=label, bg=WM_CARD, fg=WM_TEXT,
+                          font=("DejaVu Sans", 8), relief=tk.FLAT,
+                          bd=0, padx=6, pady=4, cursor="hand2",
+                          highlightthickness=1, highlightbackground=WM_BORDER,
+                          command=lambda r=rows, c=cols, o=obs: self._apply_quick_preset(r, c, o))
+            b.pack(side=tk.LEFT, padx=(0, 4))
+
         # ── Mode-specific section (city or grid) goes here, in correct order ──
         # Both sections are children of p but only one is packed at a time.
         # _refresh_mode_sections() controls which is visible.
@@ -343,19 +358,137 @@ class Visualizer:
         # ── Control buttons ───────────────────────────────────────────────
         tk.Frame(p, bg=WM_BORDER, height=1).pack(fill=tk.X, padx=16, pady=(2, 12))
 
-        self.run_btn = self._action_btn(p, "▶  Run", self._on_run,
-                                        WM_TERRA, "white")
-        self.pause_btn = self._action_btn(p, "⏸  Pause", self._on_pause,
-                                          WM_PLUM, "white")
-        self._action_btn(p, "↺  Reset", self._on_reset, WM_SAGE, WM_DARK)
-        self._action_btn(p, "✕  Close", self._on_close, "#6b2d2d", "white")
+        # ── View toggle (Search / Benchmark) ──────────────────────────────
+        self._view_var = tk.StringVar(value="search")
+        vf = tk.Frame(p, bg=WM_PANEL)
+        vf.pack(fill=tk.X, padx=16, pady=(0, 10))
+        self._view_btns = {}
+        for val, label in [("search", "⬡  Search"), ("benchmark", "⧖  Benchmark")]:
+            b = tk.Button(vf, text=label, bg=WM_CARD, fg=WM_TEXT,
+                          font=("DejaVu Sans", 8), relief=tk.FLAT,
+                          bd=0, padx=8, pady=5, cursor="hand2",
+                          highlightthickness=1, highlightbackground=WM_BORDER,
+                          command=lambda v=val: self._set_view(v))
+            b.pack(side=tk.LEFT, padx=(0, 4))
+            self._view_btns[val] = b
+        self._set_view("search", init=True)
 
-        # Status label
+        # ── Search controls ───────────────────────────────────────────────
+        self._search_controls = tk.Frame(p, bg=WM_PANEL)
+        self._search_controls.pack(fill=tk.X)
+
+        self.run_btn = self._action_btn(self._search_controls, "▶  Run", self._on_run,
+                                        WM_TERRA, "white")
+        self.pause_btn = self._action_btn(self._search_controls, "⏸  Pause", self._on_pause,
+                                          WM_PLUM, "white")
+        self._action_btn(self._search_controls, "↺  Reset", self._on_reset, WM_SAGE, WM_DARK)
+
+        # ── Benchmark controls ────────────────────────────────────────────
+        self._bench_controls = tk.Frame(p, bg=WM_PANEL)
+
+        # Grid benchmark settings
+        self._bench_grid_section = tk.Frame(self._bench_controls, bg=WM_PANEL)
+        self._section(self._bench_grid_section, "Complexity Presets")
+        self._bench_preset_var = tk.StringVar(value="all")
+        preset_f = tk.Frame(self._bench_grid_section, bg=WM_PANEL)
+        preset_f.pack(fill=tk.X, padx=16, pady=(4, 6))
+        self._preset_btns = {}
+        for val, txt in [("all", "Easy+Med+Hard"), ("custom", "Custom")]:
+            b = tk.Button(preset_f, text=txt, bg=WM_CARD, fg=WM_TEXT,
+                          font=("DejaVu Sans", 8), relief=tk.FLAT,
+                          bd=0, padx=6, pady=4, cursor="hand2",
+                          highlightthickness=1, highlightbackground=WM_BORDER,
+                          command=lambda v=val: self._set_bench_preset(v))
+            b.pack(side=tk.LEFT, padx=(0, 4))
+            self._preset_btns[val] = b
+
+        # Custom grid settings (shown when "Custom" selected)
+        self._bench_custom = tk.Frame(self._bench_grid_section, bg=WM_PANEL)
+        self._section(self._bench_custom, "Custom Grid")
+        csz = tk.Frame(self._bench_custom, bg=WM_PANEL)
+        csz.pack(fill=tk.X, padx=16, pady=(4, 4))
+        self._bench_rows = tk.IntVar(value=10)
+        self._bench_cols = tk.IntVar(value=10)
+        self._bench_obs  = tk.DoubleVar(value=0.25)
+        self._bench_runs = tk.IntVar(value=5)
+        for lbl, var, lo, hi in [
+            ("Rows", self._bench_rows, 5, 30),
+            ("Cols", self._bench_cols, 5, 30),
+        ]:
+            f = tk.Frame(csz, bg=WM_PANEL)
+            f.pack(side=tk.LEFT, padx=(0, 10))
+            tk.Label(f, text=lbl, font=("DejaVu Sans", 7),
+                     bg=WM_PANEL, fg=WM_MUTED).pack(anchor="w")
+            tk.Spinbox(f, from_=lo, to=hi, textvariable=var, width=4,
+                       font=("DejaVu Sans", 9, "bold"),
+                       bg=WM_CARD, fg=WM_DARK, relief=tk.FLAT, bd=2,
+                       buttonbackground=WM_BORDER).pack()
+
+        obs_f = tk.Frame(self._bench_custom, bg=WM_PANEL)
+        obs_f.pack(fill=tk.X, padx=16, pady=(2, 4))
+        self._bench_obs_label = tk.Label(obs_f, text="25%",
+                                          font=("DejaVu Sans", 8, "bold"),
+                                          bg=WM_PANEL, fg=WM_TERRA, width=4)
+        self._bench_obs_label.pack(side=tk.RIGHT)
+        tk.Label(obs_f, text="Obstacle %", font=("DejaVu Sans", 7),
+                 bg=WM_PANEL, fg=WM_MUTED).pack(anchor="w")
+        tk.Scale(obs_f, variable=self._bench_obs,
+                 from_=0.20, to=0.30, resolution=0.01,
+                 orient=tk.HORIZONTAL, showvalue=False,
+                 bg=WM_PANEL, troughcolor=WM_CREAM, activebackground=WM_TERRA,
+                 highlightthickness=0, sliderrelief=tk.FLAT,
+                 command=lambda v: self._bench_obs_label.configure(
+                     text=f"{float(v)*100:.0f}%")).pack(fill=tk.X)
+
+        runs_f = tk.Frame(self._bench_custom, bg=WM_PANEL)
+        runs_f.pack(fill=tk.X, padx=16, pady=(2, 6))
+        tk.Label(runs_f, text="Runs", font=("DejaVu Sans", 7),
+                 bg=WM_PANEL, fg=WM_MUTED).pack(side=tk.LEFT)
+        tk.Spinbox(runs_f, from_=3, to=20, textvariable=self._bench_runs, width=4,
+                   font=("DejaVu Sans", 9, "bold"),
+                   bg=WM_CARD, fg=WM_DARK, relief=tk.FLAT, bd=2,
+                   buttonbackground=WM_BORDER).pack(side=tk.LEFT, padx=(6, 0))
+
+        self._bench_grid_section.pack(fill=tk.X)
+        self._set_view("search", init=True)
+        self._bench_controls.pack_forget()
+        self._set_bench_preset("all", init=True)
+
+        # City benchmark — no extra dropdowns, reuses start_var / goal_var from search
+        self._bench_city_section = tk.Frame(self._bench_controls, bg=WM_PANEL)
+        tk.Label(self._bench_city_section,
+                 text="Uses Start / Goal cities selected above.",
+                 font=("DejaVu Sans", 8, "italic"),
+                 bg=WM_PANEL, fg=WM_MUTED, wraplength=210).pack(
+                     padx=16, pady=(8, 4), anchor="w")
+
+        self._action_btn(self._bench_controls, "▶  Run Benchmark",
+                         self._on_benchmark, WM_TERRA, "white")
+
+        self._bench_status_var = tk.StringVar(value="")
+        tk.Label(self._bench_controls, textvariable=self._bench_status_var,
+                 font=("DejaVu Sans", 7, "italic"),
+                 bg=WM_PANEL, fg=WM_MUTED, wraplength=220).pack(padx=16, pady=(4, 4))
+
+        # ── Close pinned to very bottom ────────────────────────────────────
+        bottom_frame = tk.Frame(p, bg=WM_PANEL)
+        bottom_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=(0, 16))
+
         self.status_var = tk.StringVar(value="Ready")
-        tk.Label(p, textvariable=self.status_var,
+        tk.Label(bottom_frame, textvariable=self.status_var,
                  font=("DejaVu Sans", 8, "italic"),
                  bg=WM_PANEL, fg=WM_MUTED,
-                 wraplength=220).pack(padx=16, pady=(8, 20))
+                 wraplength=220).pack(padx=16, pady=(4, 4))
+
+        close_b = tk.Button(bottom_frame, text="✕  Close",
+                            command=self._on_close,
+                            bg="#6b2d2d", fg="white",
+                            activebackground="#6b2d2d", activeforeground="white",
+                            font=("DejaVu Sans", 10, "bold"),
+                            relief=tk.FLAT, bd=0, padx=0, pady=9, cursor="hand2")
+        close_b.pack(fill=tk.X, padx=16, pady=(0, 16))
+        close_b.bind("<Enter>", lambda e: close_b.configure(bg=_darken("#6b2d2d")))
+        close_b.bind("<Leave>", lambda e: close_b.configure(bg="#6b2d2d"))
 
     def _section(self, parent, text):
         tk.Label(parent, text=text.upper(),
@@ -399,6 +532,8 @@ class Visualizer:
                         highlightbackground=WM_TERRA if v == val else WM_BORDER)
         if not init:
             self._refresh_mode_sections()
+            if self._view_var.get() == "benchmark":
+                self._refresh_bench_sections()
 
     def _refresh_mode_sections(self):
         mode = self.mode_var.get()
@@ -414,6 +549,14 @@ class Visualizer:
             self.h_combo.configure(values=CITY_HEURISTICS)
             if self.heuristic_var.get() not in CITY_HEURISTICS:
                 self.heuristic_var.set("euclidean_coords")
+
+    def _apply_quick_preset(self, rows, cols, obs):
+        """Set grid size and obstacle density from a quick preset and run."""
+        self.rows_var.set(rows)
+        self.cols_var.set(cols)
+        self.obs_var.set(obs)
+        self.obs_label.configure(text=f"{int(obs*100)}%")
+        self._on_run()
 
     def _set_algo(self, val, init=False):
         self.algo_var.set(val)
@@ -435,6 +578,300 @@ class Visualizer:
         for v, b in self._conn_btns.items():
             b.configure(bg=WM_TERRA if v == val else WM_CARD,
                         fg="white" if v == val else WM_TEXT)
+
+    def _set_view(self, val, init=False):
+        self._view_var.set(val)
+        for v, b in self._view_btns.items():
+            b.configure(bg=WM_PLUM if v == val else WM_CARD,
+                        fg="white" if v == val else WM_TEXT,
+                        highlightbackground=WM_PLUM if v == val else WM_BORDER)
+        if not init:
+            if val == "search":
+                self._bench_controls.pack_forget()
+                self._search_controls.pack(fill=tk.X)
+                # Restore original 2x2 GridSpec layout
+                if getattr(self, "_bench_needs_restore", False):
+                    self.fig.clear()
+                    gs = gridspec.GridSpec(2, 2, figure=self.fig,
+                                          height_ratios=[5, 1.4],
+                                          width_ratios=[7, 3],
+                                          hspace=0.35, wspace=0.3)
+                    self.ax_main    = self.fig.add_subplot(gs[0, 0])
+                    self.ax_tree    = self.fig.add_subplot(gs[0, 1])
+                    self.ax_metrics = self.fig.add_subplot(gs[1, :])
+                    self._bench_needs_restore = False
+                self._blank_canvas()
+            else:
+                self._running = False
+                self._search_controls.pack_forget()
+                self._bench_controls.pack(fill=tk.X)
+                self._refresh_bench_sections()
+                self._blank_bench_canvas()
+
+    def _refresh_bench_sections(self):
+        mode = self.mode_var.get()
+        if mode == "grid":
+            self._bench_city_section.pack_forget()
+            self._bench_grid_section.pack(fill=tk.X)
+        else:
+            self._bench_grid_section.pack_forget()
+            self._bench_city_section.pack(fill=tk.X)
+
+    def _set_bench_preset(self, val, init=False):
+        self._bench_preset_var.set(val)
+        for v, b in self._preset_btns.items():
+            b.configure(bg=WM_TERRA if v == val else WM_CARD,
+                        fg="white" if v == val else WM_TEXT)
+        if not init:
+            if val == "custom":
+                self._bench_custom.pack(fill=tk.X)
+            else:
+                self._bench_custom.pack_forget()
+
+    def _blank_bench_canvas(self):
+        for ax in [self.ax_main, self.ax_tree, self.ax_metrics]:
+            ax.cla()
+            ax.set_facecolor(WM_BG)
+            ax.axis("off")
+        self.ax_main.text(0.5, 0.5,
+                          "Configure benchmark settings\nand click  Run Benchmark",
+                          ha="center", va="center",
+                          fontsize=13, color=WM_MUTED,
+                          fontfamily="DejaVu Serif",
+                          transform=self.ax_main.transAxes)
+        self.ax_main.set_title("Benchmark Results", color=WM_DARK, fontsize=11, pad=8)
+        self.canvas.draw()
+
+    def _on_benchmark(self):
+        if self._running:
+            return
+        mode = self.mode_var.get()
+        self._bench_status_var.set("Running benchmark…")
+        self.root.update_idletasks()
+
+        thread = threading.Thread(
+            target=self._run_benchmark, args=(mode,), daemon=True)
+        thread.start()
+
+    def _run_benchmark(self, mode):
+        from benchmark import batch_compare, plot_complexity_chart
+        from heuristics import get_heuristic
+        import numpy as np
+
+        try:
+            if mode == "grid":
+                from grid import GridEnvironment
+                preset = self._bench_preset_var.get()
+
+                if preset == "all":
+                    settings = [
+                        {"label": "easy",   "rows": 8,  "cols": 8,  "obs": 0.20, "conn": 4},
+                        {"label": "medium", "rows": 15, "cols": 15, "obs": 0.25, "conn": 4},
+                        {"label": "hard",   "rows": 25, "cols": 25, "obs": 0.30, "conn": 4},
+                    ]
+                else:
+                    settings = [{"label": "custom",
+                                 "rows": self._bench_rows.get(),
+                                 "cols": self._bench_cols.get(),
+                                 "obs":  self._bench_obs.get(),
+                                 "conn": self.conn_var.get()}]
+
+                all_results = {}
+                for s in settings:
+                    def env_factory(seed, s=s):
+                        return GridEnvironment(
+                            rows=s["rows"], cols=s["cols"],
+                            obstacle_pct=s["obs"], connectivity=s["conn"],
+                            seed=seed)
+                    n = self._bench_runs.get() if preset == "custom" else 5
+                    results = batch_compare(env_factory, n_runs=n, label=s["label"])
+                    all_results[s["label"]] = results
+
+                self.root.after(0, self._draw_bench_chart, all_results)
+
+            else:
+                # City mode — run all algos on selected start/goal
+                if self._graph_obj is None:
+                    self._graph_obj = self._load_city()
+                graph_obj = self._graph_obj
+                start = self.start_var.get()
+                goal  = self.goal_var.get()
+
+                if start == goal:
+                    self.root.after(0, self._bench_status_var.set,
+                                    "Start and goal must differ.")
+                    return
+
+                from search import bfs, dfs, iddfs, greedy_best_first, astar, reconstruct_path
+                import time, tracemalloc
+
+                algos = [
+                    ("bfs",    lambda g, h: bfs(start, goal, g)),
+                    ("dfs",    lambda g, h: dfs(start, goal, g)),
+                    ("iddfs",  lambda g, h: iddfs(start, goal, g)),
+                    ("greedy", lambda g, h: greedy_best_first(start, goal, g, h)),
+                    ("astar",  lambda g, h: astar(start, goal, g, h)),
+                ]
+                h_fn = get_heuristic(self.heuristic_var.get(),
+                                     coords=graph_obj.coords)
+                results = []
+                for name, fn in algos:
+                    tracemalloc.start()
+                    t0 = time.perf_counter()
+                    final = None
+                    expanded = 0
+                    for state in fn(graph_obj.adjacency, h_fn):
+                        final = state
+                        expanded += 1
+                        if state.get("found"):
+                            break
+                    t1 = time.perf_counter()
+                    _, peak = tracemalloc.get_traced_memory()
+                    tracemalloc.stop()
+
+                    path = []
+                    cost = float("inf")
+                    if final and final.get("found"):
+                        path = reconstruct_path(final["parent"], start, goal)
+                        cost = sum(
+                            graph_obj.edge_weight(path[i], path[i+1])
+                            for i in range(len(path)-1))
+
+                    results.append({
+                        "algo":      name,
+                        "time_ms":   round((t1-t0)*1000, 3),
+                        "mem_kb":    round(peak/1024, 2),
+                        "expanded":  expanded,
+                        "cost":      round(cost, 3) if cost != float("inf") else None,
+                        "found":     bool(final and final.get("found")),
+                    })
+
+                self.root.after(0, self._draw_city_bench_chart, results, start, goal)
+
+        except Exception as ex:
+            self.root.after(0, self._bench_status_var.set, f"Error: {ex}")
+
+    def _draw_bench_chart(self, all_results):
+        """Draw 3-panel bar chart for grid complexity benchmark — equal 1x3 layout."""
+        import numpy as np
+
+        from benchmark import ALGORITHMS as BENCH_ALGOS
+        algo_names = list(BENCH_ALGOS.keys())
+        settings   = list(all_results.keys())
+        n_algos    = len(algo_names)
+
+        def get_metric(key, fallback=0.0):
+            vals = []
+            for setting in settings:
+                row = []
+                for algo in algo_names:
+                    match = next((s for s in all_results[setting]
+                                  if s.get("algo") == algo), None)
+                    row.append(match.get(key, fallback)
+                               if match and "note" not in match else fallback)
+                vals.append(row)
+            return vals
+
+        times    = get_metric("time_mean")
+        mems     = get_metric("mem_mean_kb")
+        expanded = get_metric("exp_mean")
+        tstds    = get_metric("time_std")
+        mstds    = get_metric("mem_std_kb")
+        estds    = get_metric("exp_std")
+
+        # ── Replace figure with equal 1x3 layout ─────────────────────────
+        self.fig.clear()
+        axes = self.fig.subplots(1, 3)
+        self.fig.subplots_adjust(wspace=0.35, left=0.07, right=0.97,
+                                  top=0.88, bottom=0.18)
+
+        x      = np.arange(n_algos)
+        bw     = 0.22
+        colors = [WM_TERRA, WM_PLUM, WM_SAGE]
+        labels = [s.capitalize() for s in settings]
+
+        panels = [
+            (axes[0], times,    tstds, "Runtime (ms)",   "Wall-clock Time"),
+            (axes[1], mems,     mstds, "Memory (KB)",    "Peak Memory"),
+            (axes[2], expanded, estds, "Nodes Expanded", "Search Effort"),
+        ]
+
+        for ax, metric_vals, std_vals, ylabel, title in panels:
+            ax.set_facecolor(WM_CARD)
+            for i, (sv, ss, color, lbl) in enumerate(
+                    zip(metric_vals, std_vals, colors, labels)):
+                ax.bar(x + (i-1)*bw, sv, bw,
+                       label=lbl, color=color, alpha=0.85,
+                       yerr=ss, capsize=3,
+                       error_kw={"elinewidth": 1, "ecolor": WM_MUTED})
+            ax.set_title(title, color=WM_DARK, fontsize=9, fontweight="bold", pad=6)
+            ax.set_ylabel(ylabel, fontsize=7, color=WM_MUTED)
+            ax.set_xticks(x)
+            ax.set_xticklabels([a.upper() for a in algo_names],
+                               fontsize=6, rotation=15, color=WM_DARK)
+            ax.legend(fontsize=6)
+            ax.grid(axis="y", linestyle="--", alpha=0.3)
+            ax.spines[["top", "right"]].set_visible(False)
+            ax.tick_params(colors=WM_MUTED, length=0)
+            ax.set_facecolor(WM_CARD)
+            self.fig.patch.set_facecolor(WM_BG)
+
+        self.canvas.draw()
+        self.fig.savefig("benchmark_results.png", dpi=100, bbox_inches="tight")
+        self._bench_status_var.set("Done! Chart saved → benchmark_results.png")
+        self._bench_needs_restore = True
+
+    def _draw_city_bench_chart(self, results, start, goal):
+        """Draw bar chart comparing all algos on a single city pair — equal 1x3 layout."""
+        import numpy as np
+
+        algos  = [r["algo"] for r in results]
+        times  = [r["time_ms"] for r in results]
+        mems   = [r["mem_kb"] for r in results]
+        exps   = [r["expanded"] for r in results]
+        found  = [r["found"] for r in results]
+        colors = [WM_TERRA if f else WM_MUTED for f in found]
+
+        # ── Replace figure with equal 1x3 layout ─────────────────────────
+        self.fig.clear()
+        axes = self.fig.subplots(1, 3)
+        self.fig.subplots_adjust(wspace=0.35, left=0.07, right=0.97,
+                                  top=0.88, bottom=0.18)
+        self.fig.patch.set_facecolor(WM_BG)
+
+        x = np.arange(len(algos))
+        panels = [
+            (axes[0], times, "Runtime (ms)",   f"{start} → {goal}"),
+            (axes[1], mems,  "Memory (KB)",    "Peak Memory"),
+            (axes[2], exps,  "Nodes Expanded", "Search Effort"),
+        ]
+
+        for ax, vals, ylabel, title in panels:
+            ax.set_facecolor(WM_CARD)
+            ax.bar(x, vals, color=colors, alpha=0.85, width=0.5)
+            ax.set_title(title, color=WM_DARK, fontsize=9,
+                         fontweight="bold", pad=6)
+            ax.set_ylabel(ylabel, fontsize=7, color=WM_MUTED)
+            ax.set_xticks(x)
+            ax.set_xticklabels([a.upper() for a in algos],
+                               fontsize=7, rotation=15, color=WM_DARK)
+            ax.grid(axis="y", linestyle="--", alpha=0.3)
+            ax.spines[["top", "right"]].set_visible(False)
+            ax.tick_params(colors=WM_MUTED, length=0)
+
+        # Annotate costs on runtime panel
+        for i, r in enumerate(results):
+            if r["found"] and r["cost"]:
+                axes[0].text(i, times[i] + max(times)*0.02,
+                             f"cost\n{r['cost']:.1f}",
+                             ha="center", va="bottom",
+                             fontsize=5.5, color=WM_DARK)
+
+        self.canvas.draw()
+        self._bench_status_var.set(
+            f"Done!  {start} → {goal}  ·  "
+            f"{sum(found)}/{len(found)} algorithms found a path")
+        self._bench_needs_restore = True
 
     # ══════════════════════════════════════════════════════════════════════
     #  RIGHT CANVAS (matplotlib embedded in Tkinter)

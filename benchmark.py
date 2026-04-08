@@ -1,13 +1,3 @@
-"""
-benchmark.py — Algorithm profiler and batch comparison tool
-
-Claude Prompt:
-Build a benchmarking harness with two modes: a single-run mode that runs one
-algorithm on one environment and logs metrics, and a batch compare mode that
-runs all algorithms across multiple random seeds (at least 5) and outputs a
-comparison table with mean ± std for time, memory, and nodes expanded.
-"""
-
 import time
 import tracemalloc
 import random
@@ -16,7 +6,8 @@ import statistics
 from search import bfs, dfs, iddfs, greedy_best_first, astar, reconstruct_path
 from heuristics import get_heuristic
 
-# ── Algorithm wrapper ────────────────────────────────────────
+
+# ── Algorithm wrapper (IMPORTANT FIX) ────────────────────────────────────────
 
 ALGORITHMS = {
     "bfs": lambda env, h_fn=None: bfs(env.start, env.goal, env.adjacency),
@@ -154,6 +145,7 @@ def batch_compare(env_factory, algo_names=None, h_name='euclidean',
     print(f"\n{'='*60}")
     print(f"  BATCH BENCHMARK — {label.upper()} ({n_runs} runs)")
     print(f"  Seeds: {seeds}")
+    print(f"  Heuristic: {h_name}")
     print(f"{'='*60}")
 
     summaries = []
@@ -180,51 +172,152 @@ def batch_compare(env_factory, algo_names=None, h_name='euclidean',
             continue
 
         summaries.append({
-            'algo': algo_name,
-            'n_solved': len(times),
-            'time_mean': round(statistics.mean(times), 4),
-            'time_std': round(statistics.stdev(times) if len(times) > 1 else 0, 4),
+            'algo'       : algo_name,
+            'n_solved'   : len(times),
+            'seeds'      : seeds,           # recorded for reproducibility
+            'time_mean'  : round(statistics.mean(times), 4),
+            'time_std'   : round(statistics.stdev(times) if len(times) > 1 else 0, 4),
             'mem_mean_kb': round(statistics.mean(mems), 2),
-            'mem_std_kb': round(statistics.stdev(mems) if len(mems) > 1 else 0, 2),
-            'exp_mean': round(statistics.mean(expanded), 1),
-            'exp_std': round(statistics.stdev(expanded) if len(expanded) > 1 else 0, 1),
-            'cost_mean': round(statistics.mean(costs), 4),
-            'cost_std': round(statistics.stdev(costs) if len(costs) > 1 else 0, 4),
+            'mem_std_kb' : round(statistics.stdev(mems) if len(mems) > 1 else 0, 2),
+            'exp_mean'   : round(statistics.mean(expanded), 1),
+            'exp_std'    : round(statistics.stdev(expanded) if len(expanded) > 1 else 0, 1),
+            'cost_mean'  : round(statistics.mean(costs), 4),
+            'cost_std'   : round(statistics.stdev(costs) if len(costs) > 1 else 0, 4),
         })
+
+    # ── Tag optimality: mark algos that match the minimum mean cost ───────
+    valid = [s for s in summaries if 'cost_mean' in s]
+    if valid:
+        best_cost = min(s['cost_mean'] for s in valid)
+        for s in summaries:
+            if 'cost_mean' in s:
+                s['optimal'] = abs(s['cost_mean'] - best_cost) < 0.01
 
     _print_batch_table(summaries)
     return summaries
 
 
 def _print_batch_table(summaries):
-    print("\nAlgo        Solved   Time(ms)        Mem(KB)        NodesExp      Cost")
-    print("-" * 70)
+    print("\nAlgo        Solved   Time(ms)        Mem(KB)        NodesExp      Cost        Optimal")
+    print("-" * 85)
 
     for s in summaries:
         if 'note' in s:
             print(f"{s['algo']:<10} {s['note']}")
             continue
 
+        optimal_mark = "✓" if s.get('optimal') else " "
         print(
             f"{s['algo']:<10} {s['n_solved']:>5}   "
             f"{s['time_mean']:>7.2f}±{s['time_std']:<5.2f}   "
             f"{s['mem_mean_kb']:>7.2f}±{s['mem_std_kb']:<5.2f}   "
             f"{s['exp_mean']:>7.1f}±{s['exp_std']:<5.1f}   "
-            f"{s['cost_mean']:>7.2f}±{s['cost_std']:<5.2f}"
+            f"{s['cost_mean']:>7.2f}±{s['cost_std']:<5.2f}   "
+            f"{optimal_mark}"
         )
 
 
-# ── OPTIONAL: simple chart (extra credit easy win) ───────────────────────────
+# ── Complexity suite (Easy / Medium / Hard) ──────────────────────────────────
 
-def plot_runtime(summaries):
+def run_complexity_suite():
+    """
+    Runs batch_compare across 3 complexity settings and produces a chart.
+    Call via: python main.py --benchmark
+    """
+    from grid import GridEnvironment
+
+    settings = [
+        {"label": "easy",   "rows": 8,  "cols": 8,  "obs": 0.20, "conn": 4},
+        {"label": "medium", "rows": 15, "cols": 15, "obs": 0.25, "conn": 4},
+        {"label": "hard",   "rows": 25, "cols": 25, "obs": 0.30, "conn": 4},
+    ]
+
+    all_results = {}
+
+    for s in settings:
+        def env_factory(seed, s=s):
+            return GridEnvironment(
+                rows=s["rows"], cols=s["cols"],
+                obstacle_pct=s["obs"], connectivity=s["conn"],
+                seed=seed
+            )
+
+        print(f"\n>>> Complexity: {s['label'].upper()} "
+              f"({s['rows']}x{s['cols']}, obs={int(s['obs']*100)}%)")
+
+        results = batch_compare(env_factory, n_runs=5, label=s["label"])
+        all_results[s["label"]] = results
+
+    plot_complexity_chart(all_results)
+    return all_results
+
+
+# ── Chart: 3-panel bar chart across complexity settings ───────────────────────
+
+def plot_complexity_chart(all_results, save_path="benchmark_results.png"):
+    """
+    Produces a 3-panel bar chart (runtime, memory, nodes expanded)
+    for each algorithm across easy/medium/hard complexity settings.
+    Saves to benchmark_results.png.
+    """
     import matplotlib.pyplot as plt
+    import numpy as np
 
-    algos = [s['algo'] for s in summaries if 'time_mean' in s]
-    times = [s['time_mean'] for s in summaries if 'time_mean' in s]
+    settings   = list(all_results.keys())
+    algo_names = list(ALGORITHMS.keys())
+    n_algos    = len(algo_names)
 
-    plt.figure()
-    plt.bar(algos, times)
-    plt.title("Runtime Comparison")
-    plt.xlabel("Algorithm")
-    plt.ylabel("Time (ms)")
+    def get_metric(metric_key, fallback=0.0):
+        vals = []
+        for setting in settings:
+            row = []
+            summaries = all_results[setting]
+            for algo in algo_names:
+                match = next((s for s in summaries if s.get("algo") == algo), None)
+                row.append(match.get(metric_key, fallback) if match and "note" not in match else fallback)
+            vals.append(row)
+        return vals
+
+    times    = get_metric("time_mean")
+    memories = get_metric("mem_mean_kb")
+    expanded = get_metric("exp_mean")
+    time_stds = get_metric("time_std")
+    mem_stds  = get_metric("mem_std_kb")
+    exp_stds  = get_metric("exp_std")
+
+    fig, axes = plt.subplots(1, 3, figsize=(12, 4))
+    fig.suptitle("Algorithm Benchmark — Easy / Medium / Hard",
+                 fontsize=13, fontweight="bold", y=1.02)
+
+    x         = np.arange(n_algos)
+    bar_width  = 0.22
+    colors     = ["#4f8ef7", "#a78bfa", "#34d399"]
+    labels     = [s.capitalize() for s in settings]
+
+    panels = [
+        (axes[0], times,    time_stds, "Runtime (ms)",   "Wall-clock Time"),
+        (axes[1], memories, mem_stds,  "Memory (KB)",    "Peak Process Memory"),
+        (axes[2], expanded, exp_stds,  "Nodes Expanded", "Search Effort"),
+    ]
+
+    for ax, metric_vals, std_vals, ylabel, title in panels:
+        for i, (setting_vals, setting_stds, color, label) in enumerate(
+                zip(metric_vals, std_vals, colors, labels)):
+            offset = (i - 1) * bar_width
+            ax.bar(x + offset, setting_vals, bar_width,
+                   label=label, color=color, alpha=0.85,
+                   yerr=setting_stds, capsize=3,
+                   error_kw={"elinewidth": 1, "ecolor": "#555"})
+
+        ax.set_title(title, fontsize=11, fontweight="bold")
+        ax.set_ylabel(ylabel, fontsize=9)
+        ax.set_xticks(x)
+        ax.set_xticklabels([a.upper() for a in algo_names], fontsize=7, rotation=15)
+        ax.legend(fontsize=8)
+        ax.grid(axis="y", linestyle="--", alpha=0.4)
+        ax.spines[["top", "right"]].set_visible(False)
+
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=100, bbox_inches="tight")
+    print(f"\n  Chart saved → {save_path}")
     plt.show()
