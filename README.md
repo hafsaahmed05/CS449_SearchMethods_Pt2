@@ -24,16 +24,31 @@ An interactive visualizer for comparing uninformed and informed search algorithm
 ## Project Structure
 
 ```
-├── main.py            # Entry point — launches the GUI
-├── visualization.py   # Single-window Tkinter + matplotlib visualizer
-├── launcher.py        # Two-page setup launcher (alternate entry)
-├── search.py          # BFS, DFS, IDDFS, Greedy, A* (generator-based)
-├── heuristics.py      # Manhattan, Euclidean, Chebyshev, Haversine, euclidean_coords
-├── grid.py            # Random grid environment with obstacle placement
-├── graph_loader.py    # Loads city graph from CSV + adjacency file
-├── benchmark.py       # Profiler: time, memory, nodes expanded, path cost
-├── coordinates.csv    # Lat/lon for 45 Kansas cities
-└── Adjacencies.txt    # City adjacency pairs (bidirectional)
+CS449_SearchMethods_Pt2/
+├── main.py                  # Entry point — launches the GUI
+├── requirements.txt         # Python dependencies
+├── README.md
+├── .gitignore
+│
+├── core/                    # Search logic
+│   ├── __init__.py
+│   ├── search.py            # BFS, DFS, IDDFS, Greedy, A*
+│   ├── heuristics.py        # Manhattan, Euclidean, Chebyshev, Haversine
+│   ├── grid.py              # Random grid environment
+│   └── graph_loader.py      # City graph loader (CSV + adjacency)
+│
+├── ui/                      # Interface
+│   ├── __init__.py
+│   ├── visualization.py     # Main single-window visualizer
+│   └── launcher.py          # Two-page setup launcher
+│
+├── benchmark/               # Profiling and comparison
+│   ├── __init__.py
+│   └── benchmark.py         # Batch runner, metrics, charts
+│
+└── data/                    # Input data
+    ├── coordinates.csv      # Lat/lon for 45 Kansas cities
+    └── Adjacencies.txt      # City adjacency pairs (bidirectional)
 ```
 
 ---
