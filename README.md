@@ -44,6 +44,7 @@ CS449_SearchMethods_Pt2/
 │
 ├── benchmark/               # Profiling and comparison
 │   ├── __init__.py
+│   ├── benchamrk_results.py # Results from benchmark.py    
 │   └── benchmark.py         # Batch runner, metrics, charts
 │
 └── data/                    # Input data
