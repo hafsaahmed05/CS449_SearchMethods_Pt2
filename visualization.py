@@ -97,6 +97,8 @@ class Visualizer:
         self._city_pos      = None
         self._graph_obj     = None
         self._bench_needs_restore = False
+        self._final_state   = None
+        self._final_path    = []
 
         # ── Root window ───────────────────────────────────────────────────
         self.root = tk.Tk()
@@ -893,6 +895,12 @@ class Visualizer:
         self.canvas = FigureCanvasTkAgg(self.fig, master=rp)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
 
+        # ── Tooltip state ─────────────────────────────────────────────────
+        self._tooltip_annotation = None
+        self._tooltip_pinned     = False   # True after click, stays visible
+        self.canvas.mpl_connect("motion_notify_event", self._on_mouse_move)
+        self.canvas.mpl_connect("button_press_event",  self._on_mouse_click)
+
     def _blank_canvas(self):
         for ax in [self.ax_main, self.ax_tree, self.ax_metrics]:
             ax.cla()
@@ -1020,8 +1028,10 @@ class Visualizer:
         self.root.destroy()
 
     def _on_reset(self):
-        self._running = False
-        self._paused  = False
+        self._running     = False
+        self._paused      = False
+        self._final_state = None
+        self._final_path  = []
         self.pause_btn.configure(text="⏸  Pause")
         self._blank_canvas()
         self._set_status("Ready")
@@ -1064,7 +1074,9 @@ class Visualizer:
             path = []
 
         self.root.after(0, self._draw, final_state, path)
-        self._running = False
+        self._running     = False
+        self._final_state = final_state   # saved for hover/click tooltip
+        self._final_path  = path
 
         if path:
             cost = _path_cost(self._env, path)
@@ -1485,7 +1497,136 @@ class Visualizer:
                           facecolor=WM_PLUM, alpha=0.82,
                           edgecolor=WM_PLUM))
 
-    # ── City layout ───────────────────────────────────────────────────────
+    # ══════════════════════════════════════════════════════════════════════
+    #  HOVER / CLICK TOOLTIPS
+    # ══════════════════════════════════════════════════════════════════════
+
+    def _on_mouse_move(self, event):
+        """Show tooltip on hover — only after search finishes."""
+        if self._running or self._final_state is None:
+            return
+        if self._tooltip_pinned:
+            return
+        if event.inaxes != self.ax_main:
+            self._clear_tooltip()
+            return
+        self._show_tooltip(event.xdata, event.ydata, pin=False)
+
+    def _on_mouse_click(self, event):
+        """Pin/unpin tooltip on click — only after search finishes."""
+        if self._running or self._final_state is None:
+            return
+        if event.inaxes != self.ax_main:
+            return
+        if self._tooltip_pinned:
+            # Second click unpins
+            self._tooltip_pinned = False
+            self._clear_tooltip()
+        else:
+            self._show_tooltip(event.xdata, event.ydata, pin=True)
+
+    def _show_tooltip(self, x, y, pin=False):
+        """Find the node nearest to (x, y) and show its g/h/f/parent info."""
+        if x is None or y is None:
+            return
+
+        state = self._final_state
+        g_vals  = state.get("g", {})
+        h_vals  = state.get("h", {})
+        f_vals  = state.get("f", {})
+        parent  = state.get("parent", {})
+
+        node = None
+
+        if self._graph_type == "grid":
+            env  = self._env
+            col  = int(x)
+            row  = env.rows - 1 - int(y)
+            node = (row, col)
+            if node in env.obstacles or not (0 <= row < env.rows and 0 <= col < env.cols):
+                self._clear_tooltip()
+                return
+            # Tooltip anchor at cell center
+            tx = col + 0.5
+            ty = env.rows - row - 0.5
+
+        else:
+            # City graph — find nearest node by Euclidean distance to pos
+            pos = self._city_pos
+            if not pos:
+                return
+            best_dist = float("inf")
+            for name, (px, py) in pos.items():
+                d = (px - x)**2 + (py - y)**2
+                if d < best_dist:
+                    best_dist = d
+                    node = name
+            # Only show if close enough (within ~8% of axes range)
+            xlim = self.ax_main.get_xlim()
+            threshold = ((xlim[1] - xlim[0]) * 0.08) ** 2
+            if best_dist > threshold:
+                self._clear_tooltip()
+                return
+            tx, ty = pos[node]
+
+        # ── Build tooltip text ────────────────────────────────────────────
+        g = g_vals.get(node, "—")
+        h = h_vals.get(node, "—")
+        f = f_vals.get(node, "—")
+        par = parent.get(node, None)
+
+        if isinstance(g, float): g = f"{g:.2f}"
+        if isinstance(h, float): h = f"{h:.2f}"
+        if isinstance(f, float): f = f"{f:.2f}"
+
+        if self._graph_type == "grid":
+            node_label = f"({node[0]}, {node[1]})"
+            par_label  = f"({par[0]}, {par[1]})" if isinstance(par, tuple) else "None"
+        else:
+            node_label = str(node).replace("_", " ")
+            par_label  = str(par).replace("_", " ") if par else "None"
+
+        pin_note = " [click to unpin]" if pin else " [click to pin]"
+        lines = [
+            f"Node:   {node_label}",
+            f"g(n):   {g}",
+            f"h(n):   {h}",
+            f"f(n):   {f}",
+            f"parent: {par_label}",
+            pin_note,
+        ]
+        text = "\n".join(lines)
+
+        # ── Draw annotation ───────────────────────────────────────────────
+        self._clear_tooltip(redraw=False)
+
+        self._tooltip_annotation = self.ax_main.annotate(
+            text,
+            xy=(tx, ty),
+            xytext=(18, 18), textcoords="offset points",
+            fontsize=6.5, family="monospace",
+            color=WM_CREAM,
+            bbox=dict(boxstyle="round,pad=0.5",
+                      facecolor=WM_PLUM, alpha=0.95,
+                      edgecolor=WM_BORDER),
+            arrowprops=dict(arrowstyle="->", color=WM_MUTED, lw=0.8),
+            zorder=10,
+        )
+
+        self._tooltip_pinned = pin
+        self.canvas.draw_idle()
+
+    def _clear_tooltip(self, redraw=True):
+        if self._tooltip_annotation is not None:
+            try:
+                self._tooltip_annotation.remove()
+            except Exception:
+                pass
+            self._tooltip_annotation = None
+            if redraw:
+                self.canvas.draw_idle()
+
+
 
     def _compute_city_layout(self, env):
         layout = self.layout_var.get()
