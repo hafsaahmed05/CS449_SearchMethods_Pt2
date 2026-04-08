@@ -254,7 +254,7 @@ def run_complexity_suite():
 
 # ── Chart: 3-panel bar chart across complexity settings ───────────────────────
 
-def plot_complexity_chart(all_results, save_path="benchmark_results.png"):
+def plot_complexity_chart(all_results, save_path="benchmark/benchmark_results.png"):
     """
     Produces a 3-panel bar chart (runtime, memory, nodes expanded)
     for each algorithm across easy/medium/hard complexity settings.
