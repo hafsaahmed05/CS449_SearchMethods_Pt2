@@ -821,6 +821,18 @@ class Visualizer:
         self.canvas.draw()
         self.fig.savefig("benchmark/benchmark_results.png", dpi=100, bbox_inches="tight")
         self._bench_status_var.set("Done! Chart saved → benchmark/benchmark_results.png")
+
+        # Save log scale version to file only — don't redraw GUI
+        for ax in axes:
+            ax.set_yscale("log")
+            ax.set_ylim(bottom=0.01)
+        self.fig.savefig("benchmark/benchmark_results_log.png", dpi=100, bbox_inches="tight")
+
+        # Restore linear scale for GUI display
+        for ax in axes:
+            ax.set_yscale("linear")
+            ax.autoscale(axis="y")
+
         self._bench_needs_restore = True
 
     def _draw_city_bench_chart(self, results, start, goal):
