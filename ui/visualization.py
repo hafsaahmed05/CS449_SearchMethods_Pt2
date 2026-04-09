@@ -373,7 +373,6 @@ class Visualizer:
                           command=lambda v=val: self._set_view(v))
             b.pack(side=tk.LEFT, padx=(0, 4))
             self._view_btns[val] = b
-        self._set_view("search", init=True)
 
         # ── Search controls ───────────────────────────────────────────────
         self._search_controls = tk.Frame(p, bg=WM_PANEL)
@@ -819,20 +818,8 @@ class Visualizer:
             self.fig.patch.set_facecolor(WM_BG)
 
         self.canvas.draw()
-        self.fig.savefig("benchmark/benchmark_results.png", dpi=100, bbox_inches="tight")
-        self._bench_status_var.set("Done! Chart saved → benchmark/benchmark_results.png")
-
-        # Save log scale version to file only — don't redraw GUI
-        for ax in axes:
-            ax.set_yscale("log")
-            ax.set_ylim(bottom=0.01)
-        self.fig.savefig("benchmark/benchmark_results_log.png", dpi=100, bbox_inches="tight")
-
-        # Restore linear scale for GUI display
-        for ax in axes:
-            ax.set_yscale("linear")
-            ax.autoscale(axis="y")
-
+        self.fig.savefig("benchmark_results.png", dpi=100, bbox_inches="tight")
+        self._bench_status_var.set("Done! Chart saved → benchmark_results.png")
         self._bench_needs_restore = True
 
     def _draw_city_bench_chart(self, results, start, goal):
